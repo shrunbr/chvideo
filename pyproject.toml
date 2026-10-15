@@ -27,11 +27,10 @@ dependencies = [
     "yt-dlp[default]>=2026.8.19",
 ]
 
-# Uncomment once the GitHub repository exists (shown as links on PyPI):
-# [project.urls]
-# Homepage = "https://github.com/<your-username>/chvideo"
-# Documentation = "https://github.com/<your-username>/chvideo/tree/main/docs"
-# Issues = "https://github.com/<your-username>/chvideo/issues"
+[project.urls]
+Homepage = "https://github.com/shrunbr/chvideo"
+Documentation = "https://github.com/shrunbr/chvideo/tree/main/docs"
+Issues = "https://github.com/shrunbr/chvideo/issues"
 
 [project.scripts]
 chvideo = "chvideo:main"
