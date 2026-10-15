@@ -1,0 +1,15 @@
+# Links to videos, playlists or even search lines like 'ytsearch1:Alien Ant Farm Smooth Criminal official video' go below
+#
+# Copy this file to links.txt (which git ignores), then run:
+#   chvideo batch links.txt --library '/path/to/Songs'
+#
+# One entry per line. Blank lines and lines starting with # are ignored.
+#
+#   https://www.youtube.com/watch?v=VIDEO_ID                  a video, matched to a song automatically
+#   https://www.youtube.com/playlist?list=PLAYLIST_ID         every video in a playlist
+#   ytsearch1:Artist Song official video                      the first YouTube search result
+#   /path/to/video.mp4                                        a local video file
+#   https://www.youtube.com/watch?v=VIDEO_ID | Song Folder    pin a video to a specific song folder
+#
+# See docs/usage.md for details.
+

@@ -1,0 +1,52 @@
+[project]
+name = "chvideo"
+version = "0.1.0"
+description = "Download music videos and sync them to Clone Hero songs automatically"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["clone-hero", "music-video", "audio-alignment", "yt-dlp", "ffmpeg"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "deno>=2.9.7",
+    "numpy>=2.5.4",
+    "psutil>=7.2.2",
+    "rapidfuzz>=3.14.6",
+    "scipy>=1.18.1",
+    "yt-dlp[default]>=2026.8.19",
+]
+
+# Uncomment once the GitHub repository exists (shown as links on PyPI):
+# [project.urls]
+# Homepage = "https://github.com/<your-username>/chvideo"
+# Documentation = "https://github.com/<your-username>/chvideo/tree/main/docs"
+# Issues = "https://github.com/<your-username>/chvideo/issues"
+
+[project.scripts]
+chvideo = "chvideo:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]  # ruff's defaults: real errors, not style

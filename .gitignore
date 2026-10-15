@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Tool caches
+.ruff_cache/
+
+# Your own link lists (see links.txt.example)
+links.txt
+
+# YouTube cookie exports: these grant access to a Google account, never commit them
+cookies.txt
+*cookies*.txt
+
+# chvideo backups / stray media from local testing
+*.bak
+*.webm
+*.mp4
+*.mkv
