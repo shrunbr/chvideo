@@ -5,6 +5,7 @@
 - [Running chvideo](#running-chvideo)
 - [One song](#one-song)
 - [Many songs: `chvideo batch`](#many-songs-chvideo-batch)
+- [Finding songs without a video: `chvideo missing`](#finding-songs-without-a-video-chvideo-missing)
 - [Seeing the video in Clone Hero](#seeing-the-video-in-clone-hero)
 - [Fine-tuning the sync](#fine-tuning-the-sync)
 - [Encoding: quality, size and speed](#encoding-quality-size-and-speed)
@@ -133,6 +134,35 @@ More details:
   "(Live)" or "(X cover)" count slightly against a match. `--min-score` (default 80) sets how
   close a title must be to be considered at all.
 
+## Finding songs without a video: `chvideo missing`
+
+```bash
+chvideo missing '/path/to/Songs'
+```
+
+This scans the folder recursively, the same way `chvideo batch --library` does, and lists every
+song that has no `video.*` file:
+
+```text
+Alien Ant Farm - Smooth Criminal
+Papa Roach - Scars  (2 charts)
+...
+
+433 of 754 song folders have no video (426 distinct songs).
+```
+
+Charts of the same song are listed once, with a count. The folder argument defaults to
+`$CHVIDEO_LIBRARY`.
+
+The list goes to stdout and the count to stderr, so you can save just the list:
+
+```bash
+chvideo missing '/path/to/Songs' > missing.txt
+```
+
+`--paths` prints each song folder's full path instead, one per line (every chart separately).
+These work as `| folder` pins in a batch links file.
+
 ## Seeing the video in Clone Hero
 
 In Clone Hero, open **Settings → Gameplay** and turn on **Song Videos**. Clone Hero only picks up
@@ -219,11 +249,18 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
 | `--preview` | | Write a preview per song into the cache |
 | `--parallel-downloads N` | `2` | Videos downloaded ahead while encoding |
 
+### `chvideo missing`
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `LIBRARY` | `$CHVIDEO_LIBRARY` | Songs folder to scan (searched recursively) |
+| `--paths` | | Print full song-folder paths instead of `Artist - Song` |
+
 ## Environment variables
 
 | Variable | Used for |
 | --- | --- |
-| `CHVIDEO_LIBRARY` | Default for `--library` |
+| `CHVIDEO_LIBRARY` | Default for `--library` and the `chvideo missing` folder |
 | `CHVIDEO_COOKIES` | Default for `--cookies` |
 | `CHVIDEO_CACHE` | Cache folder (overrides the default below) |
 | `XDG_CACHE_HOME` | Linux only: base of the default cache folder |

@@ -87,6 +87,12 @@ chvideo batch links.txt --library '/path/to/Songs'
 [`links.txt.example`](links.txt.example). chvideo shows which video goes to which song and asks
 before it starts.
 
+**Which songs still need a video:**
+
+```bash
+chvideo missing '/path/to/Songs'
+```
+
 > [!TIP]
 > Put paths and URLs in single quotes, in both PowerShell and bash. In bash, a `!` inside
 > double quotes (common in Clone Hero folder names) triggers history expansion. More quoting

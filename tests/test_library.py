@@ -60,3 +60,30 @@ def test_read_inputs(tmp_path):
         ("https://youtu.be/c", "Tab Folder"),
         ("ytsearch1:artist song", None),
     ]
+
+
+def test_missing_videos_groups_charts_and_skips_songs_with_video(tmp_path, capsys):
+    from chvideo.missing import main, missing_videos
+
+    for folder, artist, name, video in [
+        ("A1", "Papa Roach", "Scars", False),
+        ("A2", "Papa Roach", "Scars", False),
+        ("B", "Skillet", "Hero", True),
+        ("C", "Alien Ant Farm", "Smooth Criminal", False),
+    ]:
+        d = tmp_path / folder
+        d.mkdir()
+        (d / "song.opus").write_bytes(b"x")
+        (d / "song.ini").write_text(f"[Song]\nartist = {artist}\nname = {name}\n", encoding="utf-8")
+        if video:
+            (d / "video.mp4").write_bytes(b"x")
+    groups = missing_videos(scan_library(tmp_path))
+    assert [(g[0].title, len(g)) for g in groups] == [("Alien Ant Farm - Smooth Criminal", 1), ("Papa Roach - Scars", 2)]
+
+    assert main([str(tmp_path)]) == 0
+    out = capsys.readouterr()
+    assert out.out.splitlines() == ["Alien Ant Farm - Smooth Criminal", "Papa Roach - Scars  (2 charts)"]
+    assert "3 of 4 song folders" in out.err
+
+    assert main([str(tmp_path), "--paths"]) == 0
+    assert capsys.readouterr().out.splitlines() == [str(tmp_path.resolve() / f) for f in ("A1", "A2", "C")]
