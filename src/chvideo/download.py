@@ -33,6 +33,10 @@ class DownloadError(RuntimeError):
     pass
 
 
+class RateLimited(DownloadError):
+    """YouTube's "Sign in to confirm you're not a bot": every further request fails for a while."""
+
+
 class _Logger:
     """Route yt-dlp's messages: shown normally unless quiet, but its error lines are dropped
     because they are re-raised as DownloadError with chvideo-specific advice (yt-dlp's own text
@@ -68,7 +72,8 @@ def _youtube_dl(opts: dict, source: str) -> Iterator:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 yield ydl
         except yt_dlp.utils.DownloadError as e:
-            raise DownloadError(_explain(str(e), source)) from None
+            error = RateLimited if "not a bot" in str(e).lower() else DownloadError
+            raise error(_explain(str(e), source)) from None
 
 
 def _explain(message: str, source: str) -> str:
@@ -98,6 +103,9 @@ class VideoMeta:
     artist: str = ""  # set by YouTube for many official music videos
     track: str = ""
     duration: float | None = None
+    views: int | None = None
+    verified: bool = False  # the channel has YouTube's verified badge
+    description: str = ""  # only the first line or so for search results
 
     @property
     def label(self) -> str:
@@ -137,6 +145,9 @@ def _meta(url: str, info: dict) -> VideoMeta:
         artist=info.get("artist") or (", ".join(info["artists"]) if info.get("artists") else ""),
         track=info.get("track") or "",
         duration=info.get("duration"),
+        views=info.get("view_count"),
+        verified=bool(info.get("channel_is_verified")),
+        description=info.get("description") or "",
     )
 
 

@@ -6,6 +6,7 @@
 - [One song](#one-song)
 - [Many songs: `chvideo batch`](#many-songs-chvideo-batch)
 - [Finding songs without a video: `chvideo missing`](#finding-songs-without-a-video-chvideo-missing)
+- [Finding videos automatically: `chvideo auto`](#finding-videos-automatically-chvideo-auto)
 - [Seeing the video in Clone Hero](#seeing-the-video-in-clone-hero)
 - [Fine-tuning the sync](#fine-tuning-the-sync)
 - [Encoding: quality, size and speed](#encoding-quality-size-and-speed)
@@ -163,6 +164,109 @@ chvideo missing '/path/to/Songs' > missing.txt
 `--paths` prints each song folder's full path instead, one per line (every chart separately).
 These work as `| folder` pins in a batch links file.
 
+## Finding videos automatically: `chvideo auto`
+
+```bash
+chvideo auto '/path/to/Songs'
+```
+
+For every song that `chvideo missing` would list, this searches YouTube for the official music
+video and syncs it, with no links file needed. Not every song has a music video. For songs that
+don't, nothing is installed, and you can [block them](#blocking-songs-that-have-no-video) so later
+runs skip them.
+
+1. **Searches YouTube** for `Artist Song official music video`. Chart annotations such as
+   `(WaveGroup)` or `(Britney Spears cover)` are left out of the search.
+2. **Drops what clearly isn't the music video**, judged from the title, channel and description:
+   - lyric videos, visualizers and official-audio uploads
+   - auto-generated uploads ("Artist - Topic", "Provided to YouTube by …")
+   - live, acoustic and remix versions, and fan-filmed concerts
+   - covers, drum/guitar/bass playthroughs, reactions, lessons, interviews, commentary, and
+     fan-made or student-made videos
+   - uploads where the uploader names themselves in the title, such as
+     `Alex Rudinger - Bad Wolves - "Officer Down"` on Alex Rudinger's channel (a drum playthrough)
+   - videos too short to contain the song
+3. **Checks the rest are legitimate.** A video is used only if it comes from:
+   - **the artist's own channel**, or **a label or VEVO channel**. These are trusted as they are.
+   - **any other channel** (a director's, a production company's, a re-upload), if its full
+     description has the credits official videos carry ("Directed by …", "Director:",
+     "Music video by X performing Y", "Production company", …) or its title says "Official".
+     Fan disclaimers ("all rights go to the original owners", "I don't own this"), "my cover"
+     and drum/guitar gear endorsements rule a video out.
+
+   Checking the full description costs one extra request per video, so it's only done for
+   uploads that aren't from the artist or a label.
+4. **Shows a plan and asks before starting**, like `chvideo batch`. Songs where nothing passed say
+   why:
+
+   ```text
+   Plan:
+       1. Wolfmother - Woman (Official Video)  ->  Wolfmother - Woman (Harmonix)  (+2 fallback videos)
+       2. Bad Wolves - Officer Down            ->  FAILED: no music video found (rejected: doesn't look official (fan re-upload?) x2)
+   ```
+
+5. **Confirms every video by audio.** A video is only installed if the song's audio is really in
+   it. If the top pick fails, the next one is tried, up to `--tries` (default 3) per song.
+
+Charts of a specific version work too. A chart named `Song (Live)` or `Song (Acoustic)` only
+accepts videos whose title says so, and the search leaves out "official music video" so that it
+finds those versions.
+
+For older songs whose label never uploaded the video, fan re-uploads are often the only copy.
+`--allow-unofficial` accepts uploads that don't look official. Lyric videos, covers,
+playthroughs and the rest of step 2 are still left out.
+
+Start small to see how the picks look before running it on everything:
+
+```bash
+# Just show what would be picked for the first 20 songs
+chvideo auto '/path/to/Songs' --plan --limit 20
+
+# One artist or song
+chvideo auto '/path/to/Songs' --only 'wolfmother'
+```
+
+Songs where no video passed are listed at the end as `<last video or search> | <song folder>`
+lines. Put them in a file, swap in the right video URLs, and run it with `chvideo batch`.
+
+### Blocking songs that have no video
+
+Some songs just don't have a music video. So that `chvideo auto` doesn't search for them on every
+run, it offers to block them at the end:
+
+```text
+No matching video was found for 2 song(s):
+  Van Morrison - Brown Eyed Girl
+  Wheeler Walker Jr. - Sniffers Row
+Block them so `chvideo auto` skips them next time? [y/N]
+```
+
+Only songs that failed for good are offered: there was no usable search result, or every video
+tried failed the audio check. Download errors, rate limiting and encoding failures are never
+blocked, because a later run may succeed. With `-y` nothing is blocked unless you also pass
+`--block-failed`, which blocks without asking.
+
+Blocked songs are listed in `chvideo-blocked.txt` in your songs folder. Each line is a song folder
+relative to that folder, under a comment saying when and why it was blocked:
+
+```text
+# 2026-10-22: no music video found in the search results
+Wheeler Walker Jr. - Sniffers Row
+```
+
+- **To unblock a song**, delete its line.
+- **To block one by hand**, add its folder.
+- **To try all blocked songs once**, pass `--retry-blocked`.
+
+`chvideo missing` still lists blocked songs, since they still have no video.
+
+> [!NOTE]
+> Every song costs a YouTube search, sometimes a few metadata checks, and a download per try. On
+> a big library YouTube may start rate-limiting you ("Sign in to confirm you're not a bot"). When
+> that happens, chvideo stops: it keeps the songs it has already found videos for, and leaves the
+> rest for a later run without marking them failed. Wait a while (often an hour), use `--limit`
+> to work through the library in chunks, or pass `--cookies` (see [cookies.md](cookies.md)).
+
 ## Seeing the video in Clone Hero
 
 In Clone Hero, open **Settings → Gameplay** and turn on **Song Videos**. Clone Hero only picks up
@@ -211,7 +315,7 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
 
 ## Option reference
 
-### Shared by `chvideo` and `chvideo batch`
+### Shared by `chvideo`, `chvideo batch` and `chvideo auto`
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -249,6 +353,20 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
 | `--preview` | | Write a preview per song into the cache |
 | `--parallel-downloads N` | `2` | Videos downloaded ahead while encoding |
 
+### `chvideo auto` only
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `LIBRARY` | `$CHVIDEO_LIBRARY` | Songs folder (searched recursively) |
+| `--only TEXT` | | Only songs whose `Artist - Song` contains TEXT |
+| `--limit N` | | Only the first N songs without a video (alphabetically) |
+| `--tries N` | `3` | Search results to try per song before giving up |
+| `--min-score N` | `80` | Minimum title-match score (0–100) for a search result |
+| `--allow-unofficial` | | Also accept uploads that don't look official (fan re-uploads); covers, lyric videos etc. are still left out |
+| `--block-failed` | | Block songs no video could be found for without asking (see [Blocking](#blocking-songs-that-have-no-video)) |
+| `--retry-blocked` | | Also try the songs listed in `chvideo-blocked.txt` |
+| `--plan`, `-y`, `--preview`, `--parallel-downloads N` | | As for `chvideo batch` |
+
 ### `chvideo missing`
 
 | Option | Default | Description |
@@ -260,7 +378,7 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
 
 | Variable | Used for |
 | --- | --- |
-| `CHVIDEO_LIBRARY` | Default for `--library` and the `chvideo missing` folder |
+| `CHVIDEO_LIBRARY` | Default for `--library` and the `chvideo missing` / `chvideo auto` folder |
 | `CHVIDEO_COOKIES` | Default for `--cookies` |
 | `CHVIDEO_CACHE` | Cache folder (overrides the default below) |
 | `XDG_CACHE_HOME` | Linux only: base of the default cache folder |

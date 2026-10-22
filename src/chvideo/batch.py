@@ -13,11 +13,12 @@ import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 from . import align as A
 from .cookies import CookieError
-from .download import DownloadError, VideoMeta, fetch_video, resolve_source
+from .download import DownloadError, RateLimited, VideoMeta, fetch_video, resolve_source
 from .library import Candidate, LibrarySong, candidates, resolve_folder, scan_library
 from .media import VIDEO_CONTAINER_EXTS, MediaError, decode_audio, require_tools, video_info
 from .osutil import cache_dir, is_local_file, read_text_any
@@ -40,14 +41,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="Clone Hero songs folder to match against (default: $CHVIDEO_LIBRARY)")
     p.add_argument("--min-score", type=float, default=80.0,
                    help="Minimum title-match score (0-100) for a song to be considered (default 80)")
+    add_batch_options(p)
+    add_render_options(p)
+    return p.parse_args(argv)
+
+
+def add_batch_options(p: argparse.ArgumentParser) -> None:
+    """Options shared by `chvideo batch` and `chvideo auto`."""
     p.add_argument("--plan", action="store_true", help="Only show which video goes to which song")
     p.add_argument("-y", "--yes", action="store_true", help="Don't ask for confirmation")
     p.add_argument("--preview", action="store_true",
                    help="Also write a preview (video + chart audio) for each song into the cache")
     p.add_argument("--parallel-downloads", type=int, default=2,
                    help="How many videos to download ahead while encoding (default 2)")
-    add_render_options(p)
-    return p.parse_args(argv)
 
 
 @dataclass
@@ -55,8 +61,10 @@ class Job:
     meta: VideoMeta
     explicit: list[LibrarySong] | None = None  # from "URL | folder"
     tries: list[Candidate] = field(default_factory=list)
+    alternatives: list[VideoMeta] = field(default_factory=list)  # other search results, tried in order
     status: str = "pending"  # pending | ok | skip | fail
     detail: str = ""
+    permanent: bool = False  # failed for a reason that retrying won't fix (no video matched the audio)
     installed: list[str] = field(default_factory=list)
 
 
@@ -164,8 +172,10 @@ def _print_plan(jobs: list[Job]) -> None:
     width = min(60, max((len(j.meta.label) for j in jobs), default=10))
     for i, j in enumerate(jobs, 1):
         label = j.meta.label if len(j.meta.label) <= width else j.meta.label[: width - 1] + "…"
-        if j.explicit:
+        if j.explicit and j.status == "pending":
             target = ", ".join(s.path.name for s in j.explicit)
+            if j.alternatives:
+                target += f"  (+{len(j.alternatives)} fallback video{'s' if len(j.alternatives) > 1 else ''})"
         elif j.tries:
             first = j.tries[0]
             charts = f" ({len(first.songs)} charts)" if len(first.songs) > 1 else ""
@@ -215,10 +225,43 @@ def _indent(msg: str = "") -> None:
     print("   " + msg)
 
 
+def _sync_with_alternatives(job: Job, get_video, opts: SyncOptions, args: argparse.Namespace, cache: Path) -> Path:
+    """Sync the job's video; if it can't be used and there are other search results, try those in turn."""
+    while True:
+        video_path = None
+        try:
+            video_path = get_video()
+            _sync_job(job, video_path, opts, args)
+            return video_path
+        except RateLimited:
+            raise  # the next video would fail the same way
+        except (A.AlignError, MediaError, DownloadError) as e:
+            if not job.alternatives:
+                raise
+            print(f"  not used: {_short(e)}")
+            if video_path is not None:
+                discard_download(video_path, job.meta.source)  # a rejected search result is no use later
+            job.meta = job.alternatives.pop(0)
+            print(f"\n  trying the next search result: {job.meta.label}\n  {job.meta.source}\n  downloading...")
+            get_video = partial(fetch_video, job.meta.source, cache, args.max_height, refresh=args.refresh, quiet=True)
+
+
+def _wait_for_download(fut: Future) -> Path:
+    try:
+        return fut.result(timeout=2)
+    except TimeoutError:
+        print("  downloading...")
+        return fut.result()
+
+
 def run(args: argparse.Namespace) -> int:
     require_tools()
     load_cookies(args)
-    jobs = _plan(args)
+    return execute(_plan(args), args)
+
+
+def execute(jobs: list[Job], args: argparse.Namespace) -> int:
+    """Show the plan, confirm, then download and sync every pending job."""
     _print_plan(jobs)
     todo = [j for j in jobs if j.status == "pending"]
     if args.plan or not todo:
@@ -249,21 +292,20 @@ def run(args: argparse.Namespace) -> int:
             ensure_downloads(i + 1 + lookahead)  # keep the next few downloading while we encode
             print(f"\n[{i + 1}/{len(todo)}] {job.meta.label}")
             print(f"  {job.meta.source}")
-            fut = downloads[i]
             try:
-                try:
-                    video_path = fut.result(timeout=2)
-                except TimeoutError:
-                    print("  downloading...")
-                    video_path = fut.result()
-                _sync_job(job, video_path, opts, args)
+                video_path = _sync_with_alternatives(job, partial(_wait_for_download, downloads[i]), opts, args, cache)
                 job.status = "ok"
                 if not args.dry_run and not args.keep_downloads:
                     discard_download(video_path, job.meta.source)
             except KeyboardInterrupt:
                 raise
+            except RateLimited as e:
+                job.status, job.detail = "fail", _short(e)
+                print(f"  FAILED: {job.detail}\n\nStopping: every further download would fail the same way.")
+                break
             except Exception as e:  # noqa: BLE001 - one bad video shouldn't stop the batch
                 job.status, job.detail = "fail", _short(e)
+                job.permanent = isinstance(e, A.AlignError)
                 print(f"  FAILED: {job.detail}")
             downloads.pop(i, None)
     except KeyboardInterrupt:
@@ -271,7 +313,7 @@ def run(args: argparse.Namespace) -> int:
         pool.shutdown(wait=False, cancel_futures=True)
         _summary(jobs, time.time() - t_start)
         return 130
-    pool.shutdown(wait=True)
+    pool.shutdown(wait=True, cancel_futures=True)  # downloads queued before a rate-limit stop
     _summary(jobs, time.time() - t_start)
     return 0 if all(j.status != "fail" for j in jobs) else 1
 
@@ -293,7 +335,8 @@ def _summary(jobs: list[Job], elapsed: float) -> None:
     if failed or pending:
         print("\nTo retry, put these in a file, add ' | <song folder>' where the match was wrong, and run it again:")
         for j in failed + pending:
-            print(f"  {j.meta.source}")
+            for folder in [s.path for s in j.explicit] if j.explicit else [None]:
+                print(f"  {j.meta.source}" + (f" | {folder}" if folder else ""))
 
 
 def main(argv: list[str]) -> int:

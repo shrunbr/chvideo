@@ -25,7 +25,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "The video's soundtrack is aligned against the chart's audio, the result is "
         "rendered so frame t matches song time t, and saved as video.webm in the song folder. "
         "For many songs at once see `chvideo batch --help`; to list songs without a video see "
-        "`chvideo missing --help`.",
+        "`chvideo missing --help`, and to find and sync their videos automatically `chvideo auto --help`.",
     )
     p.add_argument("song_dir", type=Path, help="Clone Hero song folder (contains song.ini / notes.* / audio stems)")
     p.add_argument("source", help="Music video URL (anything yt-dlp supports) or a local video file")
@@ -49,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
         from .missing import main as missing_main
 
         return missing_main(argv[1:])
+    if argv and argv[0] == "auto":
+        from .auto import main as auto_main
+
+        return auto_main(argv[1:])
     args = parse_args(argv)
     try:
         return run(args)

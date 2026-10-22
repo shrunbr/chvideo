@@ -93,6 +93,14 @@ before it starts.
 chvideo missing '/path/to/Songs'
 ```
 
+**Find and add their videos automatically:** each one is searched on YouTube, and the official
+video is picked and checked by audio.
+
+```bash
+chvideo auto '/path/to/Songs' --plan --limit 20   # preview the picks first
+chvideo auto '/path/to/Songs'
+```
+
 > [!TIP]
 > Put paths and URLs in single quotes, in both PowerShell and bash. In bash, a `!` inside
 > double quotes (common in Clone Hero folder names) triggers history expansion. More quoting

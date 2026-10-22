@@ -78,7 +78,9 @@ def test_missing_videos_groups_charts_and_skips_songs_with_video(tmp_path, capsy
         if video:
             (d / "video.mp4").write_bytes(b"x")
     groups = missing_videos(scan_library(tmp_path))
-    assert [(g[0].title, len(g)) for g in groups] == [("Alien Ant Farm - Smooth Criminal", 1), ("Papa Roach - Scars", 2)]
+    assert [(g[0].title, len(g)) for g in groups] == [
+        ("Alien Ant Farm - Smooth Criminal", 1), ("Papa Roach - Scars", 2),
+    ]
 
     assert main([str(tmp_path)]) == 0
     out = capsys.readouterr()
