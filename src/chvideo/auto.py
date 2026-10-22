@@ -32,7 +32,7 @@ from .library import (
 from .media import MediaError, require_tools
 from .missing import missing_videos
 from .osutil import read_text_any
-from .pipeline import add_render_options, load_cookies
+from .pipeline import add_render_options, check_render_args, load_cookies
 from .songdir import SongError
 
 SEARCH_RESULTS = 10
@@ -69,7 +69,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--retry-blocked", action="store_true", help=f"Also try the songs listed in {BLOCKLIST}")
     add_batch_options(p)
     add_render_options(p)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    check_render_args(p, args)
+    return args
 
 
 def search_query(song: LibrarySong) -> str:

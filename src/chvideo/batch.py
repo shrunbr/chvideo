@@ -18,12 +18,13 @@ from pathlib import Path
 
 from . import align as A
 from .cookies import CookieError
-from .download import DownloadError, RateLimited, VideoMeta, fetch_video, resolve_source
+from .download import DownloadError, LowResolution, RateLimited, VideoMeta, fetch_video, resolve_source
 from .library import Candidate, LibrarySong, candidates, resolve_folder, scan_library
 from .media import VIDEO_CONTAINER_EXTS, MediaError, decode_audio, require_tools, video_info
 from .osutil import cache_dir, is_local_file, read_text_any
 from .pipeline import (
-    SyncOptions, add_render_options, align_song, discard_download, fmt_t, load_cookies, render_and_install,
+    SyncOptions, add_render_options, align_song, check_min_height, check_render_args, discard_download, fmt_t,
+    load_cookies, render_and_install,
 )
 from .songdir import SongError, load_song_folder
 
@@ -43,7 +44,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="Minimum title-match score (0-100) for a song to be considered (default 80)")
     add_batch_options(p)
     add_render_options(p)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    check_render_args(p, args)
+    return args
 
 
 def add_batch_options(p: argparse.ArgumentParser) -> None:
@@ -64,7 +67,7 @@ class Job:
     alternatives: list[VideoMeta] = field(default_factory=list)  # other search results, tried in order
     status: str = "pending"  # pending | ok | skip | fail
     detail: str = ""
-    permanent: bool = False  # failed for a reason that retrying won't fix (no video matched the audio)
+    permanent: bool = False  # failed for a reason that retrying won't fix (no video matched the audio, too low-res)
     installed: list[str] = field(default_factory=list)
 
 
@@ -194,6 +197,7 @@ def _print_plan(jobs: list[Job]) -> None:
 def _sync_job(job: Job, video_path: Path, opts: SyncOptions, args: argparse.Namespace) -> None:
     info = video_info(video_path)
     print(f"  video: {info.width}x{info.height} @ {info.fps:.3f} fps, {fmt_t(info.duration)}")
+    check_min_height(info, args.min_height)
     if not info.has_audio:
         raise MediaError("the video has no audio track, so it can't be matched or synced")
     vid_audio = decode_audio(video_path, A.SR)
@@ -243,7 +247,8 @@ def _sync_with_alternatives(job: Job, get_video, opts: SyncOptions, args: argpar
                 discard_download(video_path, job.meta.source)  # a rejected search result is no use later
             job.meta = job.alternatives.pop(0)
             print(f"\n  trying the next search result: {job.meta.label}\n  {job.meta.source}\n  downloading...")
-            get_video = partial(fetch_video, job.meta.source, cache, args.max_height, refresh=args.refresh, quiet=True)
+            get_video = partial(fetch_video, job.meta.source, cache, args.max_height, min_height=args.min_height,
+                                refresh=args.refresh, quiet=True)
 
 
 def _wait_for_download(fut: Future) -> Path:
@@ -285,7 +290,7 @@ def execute(jobs: list[Job], args: argparse.Namespace) -> int:
         for k in range(min(upto, len(todo))):
             if k not in downloads:
                 downloads[k] = pool.submit(fetch_video, todo[k].meta.source, cache, args.max_height,
-                                           refresh=args.refresh, quiet=True)
+                                           min_height=args.min_height, refresh=args.refresh, quiet=True)
 
     try:
         for i, job in enumerate(todo):
@@ -305,7 +310,7 @@ def execute(jobs: list[Job], args: argparse.Namespace) -> int:
                 break
             except Exception as e:  # noqa: BLE001 - one bad video shouldn't stop the batch
                 job.status, job.detail = "fail", _short(e)
-                job.permanent = isinstance(e, A.AlignError)
+                job.permanent = isinstance(e, (A.AlignError, LowResolution))
                 print(f"  FAILED: {job.detail}")
             downloads.pop(i, None)
     except KeyboardInterrupt:

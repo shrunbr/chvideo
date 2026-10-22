@@ -14,6 +14,7 @@ import numpy as np
 
 from . import align as A
 from . import cookies
+from .download import LowResolution
 from .media import MediaError, VideoInfo, mix_audio
 from .osutil import cache_dir, is_local_file
 from .render import EncodeSettings, build_timeline, make_preview, nvenc_status, render
@@ -27,11 +28,13 @@ def fmt_t(t: float) -> str:
 
 
 def add_render_options(p: argparse.ArgumentParser) -> None:
-    """Options shared by `chvideo` and `chvideo batch`."""
+    """Options shared by `chvideo`, `chvideo batch` and `chvideo auto`."""
     p.add_argument("--nudge-ms", type=int, default=0,
                    help="Written to song.ini video_start_time for fine tuning in-game "
                    "(positive = video ahead, negative = video behind). Default 0")
     p.add_argument("--max-height", type=int, default=1080, help="Max output height (default 1080)")
+    p.add_argument("--min-height", type=int, default=None, metavar="N",
+                   help="Only use videos available in at least this resolution, e.g. 480 or 720 (default: any)")
     p.add_argument("--fps", type=str, default=None, help="Output frame rate (default: source, capped at 60)")
     p.add_argument("--format", choices=("webm", "mp4"), default=None,
                    help="webm = VP8 (default on CPU, works on every platform); mp4 = H.264 (Windows/Mac only; "
@@ -54,6 +57,18 @@ def add_render_options(p: argparse.ArgumentParser) -> None:
     p.add_argument("--cookies", type=Path, default=os.environ.get("CHVIDEO_COOKIES"),
                    help="Netscape-format cookies.txt for age-restricted videos (default: $CHVIDEO_COOKIES). "
                    "The file is only read, never modified")
+
+
+def check_render_args(p: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject inconsistent render options before any work is done."""
+    if args.min_height is not None and not 0 < args.min_height <= args.max_height:
+        p.error(f"--min-height {args.min_height} must be between 1 and --max-height ({args.max_height})")
+
+
+def check_min_height(info: VideoInfo, min_height: int | None) -> None:
+    """For local files and cached downloads, which didn't go through the download's format filter."""
+    if min_height and info.height < min_height:
+        raise LowResolution(f"the video is {info.height}p, below --min-height {min_height}")
 
 
 def load_cookies(args: argparse.Namespace, log=print) -> None:

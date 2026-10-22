@@ -307,6 +307,26 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
   `--gpu` produces `.mp4`. The Clone Hero wiki recommends VP8 `.webm` as the safest format, so
   the CPU encode stays the default.
 - **`--max-height 720`** makes smaller files and faster encodes.
+- **`--min-height N`** skips videos that aren't available in at least N lines (see below).
+
+### Minimum resolution
+
+Old music videos are often only on YouTube in 240p or 360p. To skip those, set a minimum:
+
+```bash
+chvideo auto '/path/to/Songs' --min-height 720
+```
+
+Any height works: `360`, `480`, `720`, `1080` and so on, up to `--max-height`. A video that's too
+small is turned down before it's downloaded. Local files and earlier downloads are checked after
+they're loaded instead.
+
+- **`chvideo`** stops with an error.
+- **`chvideo batch`** marks that video as failed.
+- **`chvideo auto`** tries the song's next pick. If none is big enough, the song counts as having
+  no usable video, and you can block it like any other. The block reason in
+  `chvideo-blocked.txt` names the resolution, so you can unblock it if you lower the minimum
+  later.
 - **`--quality N`** sets the encoder CRF. Lower means better quality and bigger files; the
   default is 10.
 - **`--jobs N`** sets the number of parallel encoder processes. The default is one per physical
@@ -325,6 +345,7 @@ and an RTX 3080. Both outputs are about 115–120 MB for a 4-minute
 | `--gpu` | | Encode on an NVIDIA GPU (H.264 `.mp4`), falling back to the CPU |
 | `--format {webm,mp4}` | `webm` | Output format for CPU encoding |
 | `--max-height N` | `1080` | Maximum output height; also the download quality limit |
+| `--min-height N` | any | Only use videos available in at least this resolution (e.g. `480`, `720`); see [Minimum resolution](#minimum-resolution) |
 | `--fps N` | source (max 60) | Output frame rate |
 | `--quality N` | `10` | Encoder CRF, lower = better/larger |
 | `--jobs N` | cores | Parallel encoder processes |

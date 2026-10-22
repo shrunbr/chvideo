@@ -13,7 +13,8 @@ from .download import DownloadError, fetch_video
 from .media import MediaError, decode_audio, require_tools, video_info
 from .osutil import cache_dir, configure_console
 from .pipeline import (
-    SyncOptions, add_render_options, align_song, discard_download, fmt_t, load_cookies, render_and_install,
+    SyncOptions, add_render_options, align_song, check_min_height, check_render_args, discard_download, fmt_t,
+    load_cookies, render_and_install,
 )
 from .songdir import SongError, load_song_folder
 
@@ -35,7 +36,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Also write a preview (video + chart audio) to check sync in a media player")
     p.add_argument("--analyze-only", action="store_true", help="Only print the alignment, don't render")
     add_render_options(p)
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    check_render_args(p, args)
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,9 +85,11 @@ def run(args: argparse.Namespace) -> int:
     opts = SyncOptions.from_args(args)
     t_start = time.time()
     print("\n[1/3] Getting video")
-    video_path = fetch_video(args.source, cache_dir(), args.max_height, refresh=args.refresh)
+    video_path = fetch_video(args.source, cache_dir(), args.max_height, min_height=args.min_height,
+                             refresh=args.refresh)
     info = video_info(video_path)
     print(f"  {video_path.name}: {info.width}x{info.height} @ {info.fps:.3f} fps, {fmt_t(info.duration)}")
+    check_min_height(info, args.min_height)
 
     print("\n[2/3] Aligning video to song audio")
     vid_audio = decode_audio(video_path, A.SR) if info.has_audio and args.offset_ms is None else None

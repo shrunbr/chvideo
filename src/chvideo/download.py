@@ -37,6 +37,10 @@ class RateLimited(DownloadError):
     """YouTube's "Sign in to confirm you're not a bot": every further request fails for a while."""
 
 
+class LowResolution(DownloadError):
+    """The video isn't available at --min-height or better."""
+
+
 class _Logger:
     """Route yt-dlp's messages: shown normally unless quiet, but its error lines are dropped
     because they are re-raised as DownloadError with chvideo-specific advice (yt-dlp's own text
@@ -151,7 +155,19 @@ def _meta(url: str, info: dict) -> VideoMeta:
     )
 
 
-def fetch_video(source: str, cache_dir: Path, max_height: int, *, refresh: bool = False, quiet: bool = False) -> Path:
+def format_selector(max_height: int, min_height: int | None = None) -> str:
+    """Best video stream up to max_height plus best audio; the audio is what we align against, the
+    picture gets re-encoded anyway.  If nothing is that small, the smallest above it.  With
+    min_height, nothing below that (formats of unknown height are allowed; checked after download)."""
+    at_most = f"[height<={max_height}]"
+    at_least = f"[height>=?{min_height}]" if min_height else ""
+    return f"bv*{at_most}{at_least}+ba/b{at_most}{at_least}/bv*{at_least}+ba/b{at_least}"
+
+
+def fetch_video(
+    source: str, cache_dir: Path, max_height: int, *, min_height: int | None = None, refresh: bool = False,
+    quiet: bool = False,
+) -> Path:
     """Return a local path for `source` (a URL or an existing file)."""
     if is_local_file(source):
         return Path(source).expanduser().resolve()
@@ -167,9 +183,7 @@ def fetch_video(source: str, cache_dir: Path, max_height: int, *, refresh: bool 
             return done[0]
 
     opts = _base_opts() | {
-        # Best video stream up to the requested height plus best audio; the audio is
-        # what we align against, the picture gets re-encoded anyway.
-        "format": f"bv*[height<={max_height}]+ba/b[height<={max_height}]/bv*+ba/b",
+        "format": format_selector(max_height, min_height),
         "merge_output_format": "mkv",
         "outtmpl": str(target_dir / "video.%(ext)s"),
         "quiet": quiet,
@@ -177,9 +191,14 @@ def fetch_video(source: str, cache_dir: Path, max_height: int, *, refresh: bool 
         "noprogress": quiet,
         "overwrites": True,
     }
-    with _youtube_dl(opts, source) as ydl:
-        info = ydl.extract_info(source, download=True)
-        title = info.get("title")
+    try:
+        with _youtube_dl(opts, source) as ydl:
+            info = ydl.extract_info(source, download=True)
+            title = info.get("title")
+    except DownloadError as e:
+        if min_height and "requested format is not available" in str(e).lower():
+            raise LowResolution(f"the video isn't available in {min_height}p or better (--min-height)") from None
+        raise
     files = [p for p in target_dir.iterdir() if p.stem == "video" and p.suffix in VIDEO_CONTAINER_EXTS]
     if not files:
         raise RuntimeError(f"yt-dlp finished but no video file was found in {target_dir}")

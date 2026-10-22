@@ -69,7 +69,7 @@ def test_sync_falls_back_to_next_search_result(monkeypatch, tmp_path):
     monkeypatch.setattr(batch, "_sync_job", fake_sync)
     monkeypatch.setattr(batch, "fetch_video", lambda source, *a, **k: tmp_path / "second.mkv")
     monkeypatch.setattr(batch, "discard_download", lambda path, source: discarded.append(path.name))
-    args = argparse.Namespace(max_height=1080, refresh=False)
+    args = argparse.Namespace(max_height=1080, min_height=None, refresh=False)
 
     path = batch._sync_with_alternatives(job, lambda: tmp_path / "first.mkv", None, args, tmp_path)
     assert path.name == "second.mkv"
@@ -222,3 +222,48 @@ def test_plan_stops_cleanly_when_rate_limited(tmp_path, monkeypatch, capsys):
     jobs = auto._plan(auto.parse_args([str(root)]), root.resolve())
     assert [j.meta for j in jobs] == [found]  # nothing marked failed (or blockable) for the rest
     assert "rate-limiting after 1 of 3 songs" in capsys.readouterr().out
+
+
+def test_format_selector_respects_min_height():
+    from chvideo.download import format_selector
+
+    assert format_selector(1080) == "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b"
+    sel = format_selector(1080, 720)
+    assert all("[height>=?720]" in alt for alt in sel.split("/"))  # no fallback below 720p
+
+
+def test_check_min_height():
+    from chvideo.download import LowResolution
+    from chvideo.media import VideoInfo
+    from chvideo.pipeline import check_min_height
+
+    info = VideoInfo(Path("v.mkv"), 640, 360, 30, 200.0, 0.0, True)
+    check_min_height(info, None)
+    check_min_height(info, 360)
+    with pytest.raises(LowResolution, match="360p, below --min-height 480"):
+        check_min_height(info, 480)
+
+
+def test_min_height_must_not_exceed_max_height(capsys):
+    from chvideo import auto
+
+    assert auto.parse_args(["lib", "--min-height", "720"]).min_height == 720
+    with pytest.raises(SystemExit):
+        auto.parse_args(["lib", "--min-height", "1440", "--max-height", "1080"])
+    assert "--min-height 1440 must be between" in capsys.readouterr().err
+
+
+def test_too_low_res_video_falls_back_to_next_search_result(monkeypatch, tmp_path):
+    from chvideo.download import LowResolution
+
+    first, second = video("Band - Song (Official Video)", "Band"), video("Band - Song", "Band")
+    job = batch.Job(first, explicit=[song("Band", "Song")], alternatives=[second])
+
+    def first_download():
+        raise LowResolution("the video isn't available in 720p or better (--min-height)")
+
+    monkeypatch.setattr(batch, "_sync_job", lambda *a: None)
+    monkeypatch.setattr(batch, "fetch_video", lambda source, *a, **k: tmp_path / "second.mkv")
+    args = argparse.Namespace(max_height=1080, min_height=720, refresh=False)
+    assert batch._sync_with_alternatives(job, first_download, None, args, tmp_path).name == "second.mkv"
+    assert job.meta is second
